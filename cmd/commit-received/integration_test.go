@@ -74,6 +74,7 @@ func TestMainIntegration(t *testing.T) {
 				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
+				"-cmdref", "refs/heads/master",
 			},
 			env: []string{
 				"GITHOOK_FILE_SIZE_MAX=32768", // 32KB
@@ -83,6 +84,7 @@ func TestMainIntegration(t *testing.T) {
 				"Project name: test-project",
 				"Uploader information: Test User",
 				"Uploader username: testuser",
+				"Command reference: refs/heads/master",
 				"Found", // 应该找到一些大文件
 			},
 			wantErr: false,
@@ -96,6 +98,7 @@ func TestMainIntegration(t *testing.T) {
 				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
+				"-cmdref", "refs/heads/master",
 			},
 			env: []string{
 				"GITHOOK_FILE_SIZE_MAX=2048",
@@ -209,6 +212,7 @@ func TestCommandLineArgs(t *testing.T) {
 		"-oldrev", "dummy-old-rev",
 		"-newrev", "dummy-new-rev",
 		"-refname", "refs/heads/master",
+		"-cmdref", "refs/heads/master",
 	}
 
 	// 定义与main.go中相同的标志
@@ -218,6 +222,7 @@ func TestCommandLineArgs(t *testing.T) {
 	oldRev := flag.String("oldrev", "", "旧版本哈希")
 	newRev := flag.String("newrev", "", "新版本哈希")
 	refName := flag.String("refname", "", "引用名称")
+	cmdRef := flag.String("cmdref", "", "命令引用名称")
 
 	// 解析标志
 	flag.Parse()
@@ -241,6 +246,9 @@ func TestCommandLineArgs(t *testing.T) {
 	if *refName != "refs/heads/master" {
 		t.Errorf("引用名称解析错误，期望 'refs/heads/master'，得到 '%s'", *refName)
 	}
+	if *cmdRef != "refs/heads/master" {
+		t.Errorf("命令引用名称解析错误，期望 'refs/heads/master'，得到 '%s'", *cmdRef)
+	}
 
 	// 输出解析结果
 	fmt.Printf("项目名称: %s\n", *projectName)
@@ -249,6 +257,7 @@ func TestCommandLineArgs(t *testing.T) {
 	fmt.Printf("旧版本哈希: %s\n", *oldRev)
 	fmt.Printf("新版本哈希: %s\n", *newRev)
 	fmt.Printf("引用名称: %s\n", *refName)
+	fmt.Printf("命令引用名称: %s\n", *cmdRef)
 
 	w.Close()
 

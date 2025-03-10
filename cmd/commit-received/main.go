@@ -25,6 +25,7 @@ func main() {
 	oldRev := flag.String("oldrev", "", "Old commit hash")
 	newRev := flag.String("newrev", "", "New commit hash")
 	refName := flag.String("refname", "", "Reference name")
+	cmdRef := flag.String("cmdref", "", "Command reference name")
 
 	// Parse command line parameters
 	flag.Parse()
@@ -36,6 +37,7 @@ func main() {
 	fmt.Println("Old commit hash:", *oldRev)
 	fmt.Println("New commit hash:", *newRev)
 	fmt.Println("Reference name:", *refName)
+	fmt.Println("Command reference:", *cmdRef)
 
 	// Get file size limit from environment variable, default to 5MB if not set
 	var sizeLimit int64 = 5 * 1024 * 1024 // Default value 5MB
