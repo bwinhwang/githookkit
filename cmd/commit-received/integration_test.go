@@ -81,10 +81,10 @@ func TestMainIntegration(t *testing.T) {
 				fmt.Sprintf("HOME=%s", tempDir),
 			},
 			expectedOutput: []string{
-				"Project name: test-project",
-				"Uploader information: Test User",
-				"Uploader username: testuser",
-				"Command reference: refs/heads/master",
+				"test-project",
+				"Test User",
+				"testuser",
+				"refs/heads/master",
 				"Found", // 应该找到一些大文件
 			},
 			wantErr: false,
@@ -127,7 +127,7 @@ func TestMainIntegration(t *testing.T) {
 				fmt.Sprintf("HOME=%s", tempDir),
 			},
 			expectedOutput: []string{
-				"Project name: test-project",
+				"test-project",
 			},
 			wantErr: false,
 		},

@@ -11,7 +11,7 @@ go tool cover -html=coverage.out -o coverage.html
 
 echo "Building commit-received application..."
 mkdir -p bin
-go build -o bin/commit-received ./cmd/commit-received
+CGO_ENABLED=0 go build -o bin/commit-received ./cmd/commit-received
 
 echo "Build completed successfully!"
 echo "Coverage report available at: coverage.html"

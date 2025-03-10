@@ -30,14 +30,9 @@ func main() {
 	// Parse command line parameters
 	flag.Parse()
 
-	// Print parameters for debugging
-	fmt.Println("Project name:", *project)
-	fmt.Println("Uploader information:", *uploader)
-	fmt.Println("Uploader username:", *uploaderUsername)
-	fmt.Println("Old commit hash:", *oldRev)
-	fmt.Println("New commit hash:", *newRev)
-	fmt.Println("Reference name:", *refName)
-	fmt.Println("Command reference:", *cmdRef)
+	// Print parameters for logging
+	log.Printf("project=%s, uploader=%s, username=%s, ref=%s, cmdref=%s",
+		*project, *uploader, *uploaderUsername, *refName, *cmdRef)
 
 	// Get file size limit from environment variable, default to 5MB if not set
 	var sizeLimit int64 = 5 * 1024 * 1024 // Default value 5MB
