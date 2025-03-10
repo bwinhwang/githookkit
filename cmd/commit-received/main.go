@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/user"
+	"path/filepath"
 	"strconv"
 
 	"github.com/bwinhwang/githookkit"
@@ -45,12 +45,7 @@ func main() {
 		}
 	}
 
-	// Load YAML configuration file
-	usr, err := user.Current()
-	if err != nil {
-		log.Fatalf("Failed to get current user: %v", err)
-	}
-	configPath := usr.HomeDir + "/.githook_config"
+	configPath := filepath.Join(os.Getenv("HOME"), ".githook_config")
 	configData, err := os.ReadFile(configPath)
 
 	var config Config
