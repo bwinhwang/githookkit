@@ -1,4 +1,5 @@
 *.out
 *.html
 testdata/
+bin/
 .vscode/

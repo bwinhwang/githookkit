@@ -4,9 +4,18 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/user"
+	"strconv"
 
 	"github.com/bwinhwang/githookkit"
+	"gopkg.in/yaml.v2"
 )
+
+// Define configuration struct
+type Config struct {
+	ProjectsWhitelist []string `yaml:"projects_whitelist"`
+}
 
 func main() {
 	// Define command line parameters
@@ -28,42 +37,87 @@ func main() {
 	fmt.Println("New commit hash:", *newRev)
 	fmt.Println("Reference name:", *refName)
 
+	// Get file size limit from environment variable, default to 5MB if not set
+	var sizeLimit int64 = 5 * 1024 * 1024 // Default value 5MB
+	if envSize := os.Getenv("GITHOOK_FILE_SIZE_MAX"); envSize != "" {
+		if size, err := strconv.ParseInt(envSize, 10, 64); err == nil {
+			sizeLimit = size
+		}
+	}
+
+	// Load YAML configuration file
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatalf("Failed to get current user: %v", err)
+	}
+	configPath := usr.HomeDir + "/.githook_config"
+	configData, err := os.ReadFile(configPath)
+
+	var config Config
+	if err != nil {
+		// Do not report error if config file does not exist, use empty config
+		log.Printf("Config file does not exist or cannot be read: %v, using empty config", err)
+		config = Config{ProjectsWhitelist: []string{}}
+	} else {
+		if err := yaml.Unmarshal(configData, &config); err != nil {
+			// Do not report error if parsing fails, use empty config
+			log.Printf("Failed to parse config file: %v, using empty config", err)
+			config = Config{ProjectsWhitelist: []string{}}
+		}
+	}
+
+	// Check if project name is in the whitelist
+	if contains(config.ProjectsWhitelist, *project) {
+		fmt.Printf("Project %s is in the whitelist, exiting\n", *project)
+		os.Exit(0) // Exit normally, no error
+	}
+
 	largeFiles, err := run(*oldRev, *newRev, func(size int64) bool {
-		return size > 5*1024 // 只包含大于1MB的文件
+		return size > sizeLimit // Use environment variable or default value
 	})
 
 	if err != nil {
-		log.Fatalf("运行失败: %v", err)
+		log.Fatalf("Run failed: %v", err)
 	}
 
-	// 打印结果
-	fmt.Printf("找到 %d 个大文件:\n", len(largeFiles))
+	// Print results
+	fmt.Printf("Found %d large files:\n", len(largeFiles))
 	for _, file := range largeFiles {
-		fmt.Printf("路径: %s, 大小: %d 字节, 哈希: %s\n", file.Path, file.Size, file.Hash)
+		fmt.Printf("Path: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
 	}
 }
 
 func run(startCommit, endCommit string, sizeChecker func(int64) bool) ([]githookkit.FileInfo, error) {
-	// 获取所有对象
+	// Get all objects
 	objectChan, err := githookkit.GetObjectList(startCommit, endCommit, true)
 	if err != nil {
-		return nil, fmt.Errorf("获取对象列表失败: %w", err)
+		return nil, fmt.Errorf("Failed to get object list: %w", err)
 	}
 
-	// 使用 GetObjectDetails 和大小检查器过滤对象
+	// Use GetObjectDetails and size checker to filter objects
 	fileInfoChan, err := githookkit.GetObjectDetails(objectChan, sizeChecker)
 	if err != nil {
-		return nil, fmt.Errorf("获取对象详情失败: %w", err)
+		return nil, fmt.Errorf("Failed to get object details: %w", err)
 	}
 
-	// 收集所有符合条件的文件信息
+	// Collect all matching file information
 	var results []githookkit.FileInfo
 	for fileInfo := range fileInfoChan {
-		// 确保对象有路径和大小信息
+		// Ensure object has path and size information
 		if fileInfo.Path != "" {
 			results = append(results, fileInfo)
 		}
 	}
 
 	return results, nil
+}
+
+// Add a helper function to check if project is in the whitelist
+func contains(slice []string, item string) bool {
+	for _, a := range slice {
+		if a == item {
+			return true
+		}
+	}
+	return false
 }
