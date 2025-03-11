@@ -65,7 +65,7 @@ func GetObjectList(startCommit, endCommit string, includePath bool) (<-chan stri
 		return nil, fmt.Errorf("Invalid end commit: %w", err)
 	}
 
-	cmd := exec.Command("git", "rev-list", "--objects", "--all", fmt.Sprintf("%s..%s", startCommit, endCommit))
+	cmd := exec.Command("git", "rev-list", "--objects", fmt.Sprintf("%s..%s", startCommit, endCommit))
 
 	output, err := cmd.StdoutPipe()
 	if err != nil {
