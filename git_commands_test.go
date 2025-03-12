@@ -415,3 +415,60 @@ func TestGetObjectDetailsWithSizeFilter(t *testing.T) {
 		t.Errorf("fileInfos returned FIVE results, but %d found", len(fileInfos))
 	}
 }
+
+func TestCountCommits(t *testing.T) {
+	// 切换到测试仓库目录
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("无法获取当前工作目录: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	err = os.Chdir("testdata/meta-ti")
+	if err != nil {
+		t.Fatalf("无法切换到测试仓库目录: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		oldRev  string
+		newRev  string
+		want    int
+		wantErr bool
+	}{
+		{
+			name:    "有效的提交范围",
+			oldRev:  "HEAD~3",
+			newRev:  "HEAD",
+			want:    3,
+			wantErr: false,
+		},
+		{
+			name:    "相同的提交",
+			oldRev:  "HEAD",
+			newRev:  "HEAD",
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name:    "无效的提交哈希",
+			oldRev:  "invalid-hash",
+			newRev:  "HEAD",
+			want:    0,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := CountCommits(tt.newRev, tt.oldRev)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CountCommits() 错误 = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("CountCommits() = %v, 期望 %v", got, tt.want)
+			}
+		})
+	}
+}
