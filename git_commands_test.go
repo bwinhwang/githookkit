@@ -472,3 +472,25 @@ func TestCountCommits(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatSize(t *testing.T) {
+	tests := []struct {
+		size     int64
+		expected string
+	}{
+		{0, "0 B"},
+		{500, "500 B"},
+		{1023, "1023 B"},
+		{1024, "1.00 KB"},
+		{2048, "2.00 KB"},
+		{1048576, "1.00 MB"},
+		{1073741824, "1.00 GB"},
+	}
+
+	for _, test := range tests {
+		result := FormatSize(test.size)
+		if result != test.expected {
+			t.Errorf("FormatSize(%d) = %s; want %s", test.size, result, test.expected)
+		}
+	}
+}

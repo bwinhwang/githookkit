@@ -30,9 +30,16 @@ func main() {
 	// Parse command line parameters
 	flag.Parse()
 
+	if *refName == *cmdRef {
+		//direct push is detected, drop immediately
+		os.Exit(0)
+	}
+
 	// Print parameters for logging
-	log.Printf("project=%s, uploader=%s, username=%s, ref=%s, cmdref=%s",
-		*project, *uploader, *uploaderUsername, *refName, *cmdRef)
+	fmt.Printf("project=%s, ref=%s, cmdref=%s\n", *project, *refName, *cmdRef)
+	fmt.Printf("uploader=%s, username=%s\n", *uploader, *uploaderUsername)
+	fmt.Printf("oldRev=%s\n", *oldRev)
+	fmt.Printf("newRev=%s\n", *newRev)
 
 	// Get file size limit from environment variable, default to 5MB if not set
 	var sizeLimit int64 = 5 * 1024 * 1024 // Default value 5MB
@@ -62,11 +69,6 @@ func main() {
 	if contains(config.ProjectsWhitelist, *project) {
 		fmt.Printf("Project %s is in the whitelist, exiting\n", *project)
 		os.Exit(0) // Exit normally, no error
-	}
-	// Skip check if oldRev is all zeros
-	if *oldRev == "0000000000000000000000000000000000000000" {
-		fmt.Println("Initial commit detected, skipping size check")
-		os.Exit(0)
 	}
 
 	// Check commit count between oldRev and newRev
