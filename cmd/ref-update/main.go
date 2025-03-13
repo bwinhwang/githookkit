@@ -25,15 +25,15 @@ func main() {
 	oldRev := flag.String("oldrev", "", "Old commit hash")
 	newRev := flag.String("newrev", "", "New commit hash")
 	refName := flag.String("refname", "", "Reference name")
-	cmdRef := flag.String("cmdref", "", "Command reference name")
 
 	// Parse command line parameters
 	flag.Parse()
 
 	// Print parameters for logging
-	log.Printf("project=%s, uploader=%s, username=%s, ref=%s, cmdref=%s",
-		*project, *uploader, *uploaderUsername, *refName, *cmdRef)
-
+	fmt.Printf("project=%s,  ref=%s", *project, *refName)
+	fmt.Printf("uploader=%s, username=%s,", *uploader, *uploaderUsername)
+	fmt.Printf("oldRev=%s", *oldRev)
+	fmt.Printf("newRev=%s", *newRev)
 	// Get file size limit from environment variable, default to 5MB if not set
 	var sizeLimit int64 = 5 * 1024 * 1024 // Default value 5MB
 	if envSize := os.Getenv("GITHOOK_FILE_SIZE_MAX"); envSize != "" {
@@ -76,7 +76,7 @@ func main() {
 	if len(largeFiles) > 0 {
 		fmt.Printf("Found %d large files:\n", len(largeFiles))
 		for _, file := range largeFiles {
-			fmt.Printf("Path: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
+			fmt.Printf("\tPath: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
 		}
 		fmt.Printf("Rejected: one or more files exceed maximum size of %s\n", githookkit.FormatSize(sizeLimit))
 		os.Exit(1)

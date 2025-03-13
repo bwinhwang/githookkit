@@ -272,7 +272,6 @@ func TestMainIntegration(t *testing.T) {
 				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
-				"-cmdref", "refs/heads/master",
 			},
 			env: []string{
 				"GITHOOK_FILE_SIZE_MAX=32768", // 32KB
@@ -285,7 +284,7 @@ func TestMainIntegration(t *testing.T) {
 				"refs/heads/master",
 				"Found", // 应该找到一些大文件
 			},
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name: "白名单项目测试",
@@ -296,7 +295,6 @@ func TestMainIntegration(t *testing.T) {
 				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
-				"-cmdref", "refs/heads/master",
 			},
 			env: []string{
 				"GITHOOK_FILE_SIZE_MAX=2048",
@@ -327,7 +325,7 @@ func TestMainIntegration(t *testing.T) {
 			expectedOutput: []string{
 				"test-project",
 			},
-			wantErr: false,
+			wantErr: true,
 		},
 	}
 
