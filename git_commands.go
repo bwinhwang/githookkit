@@ -17,7 +17,7 @@ type FileInfo struct {
 }
 
 // Format file size to human-readable format
-func formatSize(size int64) string {
+func FormatSize(size int64) string {
 	const (
 		B  = 1
 		KB = 1024 * B
@@ -237,5 +237,5 @@ func GetFormattedFileSize(commitHash, filename string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return formatSize(size), nil
+	return FormatSize(size), nil
 }

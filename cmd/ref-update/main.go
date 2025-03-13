@@ -78,6 +78,8 @@ func main() {
 		for _, file := range largeFiles {
 			fmt.Printf("Path: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
 		}
+		fmt.Printf("Rejected: one or more files exceed maximum size of %s\n", githookkit.FormatSize(sizeLimit))
+		os.Exit(1)
 	}
 }
 
