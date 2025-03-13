@@ -30,10 +30,10 @@ func main() {
 	flag.Parse()
 
 	// Print parameters for logging
-	fmt.Printf("project=%s,  ref=%s", *project, *refName)
-	fmt.Printf("uploader=%s, username=%s,", *uploader, *uploaderUsername)
-	fmt.Printf("oldRev=%s", *oldRev)
-	fmt.Printf("newRev=%s", *newRev)
+	fmt.Printf("project=%s, ref=%s\n", *project, *refName)
+	fmt.Printf("uploader=%s, username=%s\n", *uploader, *uploaderUsername)
+	fmt.Printf("oldRev=%s\n", *oldRev)
+	fmt.Printf("newRev=%s\n", *newRev)
 	// Get file size limit from environment variable, default to 5MB if not set
 	var sizeLimit int64 = 5 * 1024 * 1024 // Default value 5MB
 	if envSize := os.Getenv("GITHOOK_FILE_SIZE_MAX"); envSize != "" {

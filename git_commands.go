@@ -65,8 +65,18 @@ func GetObjectList(startCommit, endCommit string, includePath bool) (<-chan stri
 		return nil, fmt.Errorf("Invalid end commit: %w", err)
 	}
 
-	cmd := exec.Command("git", "rev-list", "--objects", fmt.Sprintf("%s..%s", startCommit, endCommit))
+	var cmds []string
+	cmds = append(cmds, "git")
+	cmds = append(cmds, "rev-list")
+	cmds = append(cmds, "--objects")
 
+	if startCommit == "0000000000000000000000000000000000000000" {
+		cmds = append(cmds, "--all")
+		cmds = append(cmds, fmt.Sprintf("%s", endCommit))
+	} else {
+		cmds = append(cmds, fmt.Sprintf("%s..%s", startCommit, endCommit))
+	}
+	cmd := exec.Command(cmds[0], cmds[1:]...)
 	output, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create stdout pipe: %w", err)
