@@ -63,6 +63,22 @@ func main() {
 		fmt.Printf("Project %s is in the whitelist, exiting\n", *project)
 		os.Exit(0) // Exit normally, no error
 	}
+	// Skip check if oldRev is all zeros
+	if *oldRev == "0000000000000000000000000000000000000000" {
+		fmt.Println("Initial commit detected, skipping size check")
+		os.Exit(0)
+	}
+
+	// Check commit count between oldRev and newRev
+	commitCount, err := githookkit.CountCommits(*oldRev, *newRev)
+	if err != nil {
+		log.Fatalf("Failed to get commit count: %v", err)
+	}
+
+	if commitCount > 1 {
+		fmt.Printf("Multiple commits detected (%d commits), ref-update will take over it\n", commitCount)
+		os.Exit(0)
+	}
 
 	largeFiles, err := run(*oldRev, *newRev, func(size int64) bool {
 		return size > sizeLimit // Use environment variable or default value
@@ -73,9 +89,11 @@ func main() {
 	}
 
 	// Print results
-	fmt.Printf("Found %d large files:\n", len(largeFiles))
-	for _, file := range largeFiles {
-		fmt.Printf("Path: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
+	if len(largeFiles) > 0 {
+		fmt.Printf("Found %d large files:\n", len(largeFiles))
+		for _, file := range largeFiles {
+			fmt.Printf("Path: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
+		}
 	}
 }
 

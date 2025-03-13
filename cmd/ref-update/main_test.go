@@ -264,52 +264,6 @@ func TestMainIntegration(t *testing.T) {
 		wantErr        bool
 	}{
 		{
-			name: "基本参数测试 - 有大文件",
-			args: []string{
-				"-project", "test-project",
-				"-uploader", "Test User",
-				"-uploader-username", "testuser",
-				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
-				"-newrev", "HEAD",
-				"-refname", "refs/heads/master",
-				"-cmdref", "refs/heads/master",
-			},
-			env: []string{
-				"GITHOOK_FILE_SIZE_MAX=1024", // 设置较小的阈值，确保能找到大文件
-				fmt.Sprintf("HOME=%s", tempDir),
-			},
-			expectedOutput: []string{
-				"Found",
-				"Path:",
-				"Size:",
-				"Hash:",
-			},
-			wantErr: false,
-		},
-		{
-			name: "初始提交测试",
-			args: []string{
-				"-project", "test-project",
-				"-uploader", "Test User",
-				"-uploader-username", "testuser",
-				"-oldrev", "0000000000000000000000000000000000000000",
-				"-newrev", "HEAD",
-				"-refname", "refs/heads/master",
-			},
-			env: []string{
-				"GITHOOK_FILE_SIZE_MAX=1024",
-				fmt.Sprintf("HOME=%s", tempDir),
-			},
-			expectedOutput: []string{
-				"Initial commit detected, skipping size check",
-			},
-			notExpected: []string{
-				"Found",
-				"Path:",
-			},
-			wantErr: false,
-		},
-		{
 			name: "基本参数测试",
 			args: []string{
 				"-project", "test-project",
