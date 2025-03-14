@@ -14,7 +14,8 @@ import (
 
 // Define configuration struct
 type Config struct {
-	ProjectsWhitelist []string `yaml:"projects_whitelist"`
+	ProjectsWhitelist []string         `yaml:"projects_whitelist"`
+	ProjectSizeLimits map[string]int64 `yaml:"project_size_limits"`
 }
 
 func main() {
@@ -49,12 +50,18 @@ func main() {
 	if err != nil {
 		// Do not report error if config file does not exist, use empty config
 		log.Printf("Config file does not exist or cannot be read: %v, using empty config", err)
-		config = Config{ProjectsWhitelist: []string{}}
+		config = Config{
+			ProjectsWhitelist: []string{},
+			ProjectSizeLimits: map[string]int64{},
+		}
 	} else {
 		if err := yaml.Unmarshal(configData, &config); err != nil {
 			// Do not report error if parsing fails, use empty config
 			log.Printf("Failed to parse config file: %v, using empty config", err)
-			config = Config{ProjectsWhitelist: []string{}}
+			config = Config{
+				ProjectsWhitelist: []string{},
+				ProjectSizeLimits: map[string]int64{},
+			}
 		}
 	}
 
@@ -62,6 +69,12 @@ func main() {
 	if contains(config.ProjectsWhitelist, *project) {
 		fmt.Printf("Project %s is in the whitelist, exiting\n", *project)
 		os.Exit(0) // Exit normally, no error
+	}
+
+	// Check if project has a specific size limit configured
+	if projectLimit, exists := config.ProjectSizeLimits[*project]; exists {
+		fmt.Printf("Using project-specific size limit for %s: %s\n", *project, githookkit.FormatSize(projectLimit))
+		sizeLimit = projectLimit
 	}
 
 	largeFiles, err := run(*oldRev, *newRev, func(size int64) bool {

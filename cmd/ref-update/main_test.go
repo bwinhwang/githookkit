@@ -206,6 +206,10 @@ func createTestConfig(configPath string) error {
 	config := `projects_whitelist:
   - whitelisted-project
   - another-whitelisted-project
+project_size_limits:
+  test-project-small: 1024
+  test-project-medium: 10240
+  test-project-large: 102400
 `
 	return os.WriteFile(configPath, []byte(config), 0644)
 }
@@ -324,6 +328,64 @@ func TestMainIntegration(t *testing.T) {
 			},
 			expectedOutput: []string{
 				"test-project",
+			},
+			wantErr: true,
+		},
+		{
+			name: "项目特定大小限制测试",
+			args: []string{
+				"-project", "test-project-small",
+				"-uploader", "Test User",
+				"-uploader-username", "testuser",
+				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-newrev", "HEAD",
+				"-refname", "refs/heads/master",
+			},
+			env: []string{
+				"GITHOOK_FILE_SIZE_MAX=65536", // 默认64KB
+				fmt.Sprintf("HOME=%s", tempDir),
+			},
+			expectedOutput: []string{
+				"Using project-specific size limit for test-project-small: 1.00 KB",
+				"Found", // 应该找到更多大文件，因为限制更小
+			},
+			wantErr: true,
+		},
+		{
+			name: "项目特定大小限制测试-中等",
+			args: []string{
+				"-project", "test-project-medium",
+				"-uploader", "Test User",
+				"-uploader-username", "testuser",
+				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-newrev", "HEAD",
+				"-refname", "refs/heads/master",
+			},
+			env: []string{
+				"GITHOOK_FILE_SIZE_MAX=2048", // 默认2KB
+				fmt.Sprintf("HOME=%s", tempDir),
+			},
+			expectedOutput: []string{
+				"Using project-specific size limit for test-project-medium: 10.00 KB",
+			},
+			wantErr: true,
+		},
+		{
+			name: "无特定大小限制的项目测试",
+			args: []string{
+				"-project", "regular-project",
+				"-uploader", "Test User",
+				"-uploader-username", "testuser",
+				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-newrev", "HEAD",
+				"-refname", "refs/heads/master",
+			},
+			env: []string{
+				"GITHOOK_FILE_SIZE_MAX=4096", // 4KB
+				fmt.Sprintf("HOME=%s", tempDir),
+			},
+			notExpected: []string{
+				"Using project-specific size limit",
 			},
 			wantErr: true,
 		},
