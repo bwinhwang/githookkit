@@ -85,13 +85,17 @@ func main() {
 		log.Fatalf("Run failed: %v", err)
 	}
 
+	var maxFileSize int64 = 0
 	// Print results
 	if len(largeFiles) > 0 {
 		fmt.Printf("Found %d large files:\n", len(largeFiles))
 		for _, file := range largeFiles {
+			if file.Size > maxFileSize {
+				maxFileSize = file.Size
+			}
 			fmt.Printf("\tPath: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
 		}
-		fmt.Printf("Rejected: one or more files exceed maximum size of %s\n", githookkit.FormatSize(sizeLimit))
+		fmt.Printf("REJECTED: one or more files exceed maximum size of %s, the largest one is %s\n", githookkit.FormatSize(sizeLimit), githookkit.FormatSize(maxFileSize))
 		os.Exit(1)
 	}
 }
