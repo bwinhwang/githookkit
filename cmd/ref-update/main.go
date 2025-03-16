@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/bwinhwang/githookkit"
@@ -22,16 +21,23 @@ func main() {
 	// Parse command line parameters
 	flag.Parse()
 
-	// Print parameters for logging
-	fmt.Printf("project=%s, ref=%s\n", *project, *refName)
-	fmt.Printf("uploader=%s, username=%s\n", *uploader, *uploaderUsername)
-	fmt.Printf("oldRev=%s\n", *oldRev)
-	fmt.Printf("newRev=%s\n", *newRev)
-
 	cfg, _ := config.LoadConfig()
 
+	// 初始化日志
+	logger, err := config.InitLogger(cfg)
+	if err != nil {
+		fmt.Printf("初始化日志失败: %v", err)
+		os.Exit(1)
+	}
+
+	// Print parameters for logging
+	logger.Debugf("project=%s, ref=%s\n", *project, *refName)
+	logger.Debugf("uploader=%s, username=%s\n", *uploader, *uploaderUsername)
+	logger.Debugf("oldRev=%s\n", *oldRev)
+	logger.Debugf("newRev=%s\n", *newRev)
+
 	if config.IsProjectWhitelisted(cfg, *project) {
-		fmt.Printf("Project %s is in the whitelist, exiting\n", *project)
+		logger.Infof("Project %s is in the whitelist, exiting\n", *project)
 		os.Exit(0) // Exit normally, no error
 	}
 
@@ -42,20 +48,19 @@ func main() {
 	})
 
 	if err != nil {
-		log.Fatalf("Run failed: %v", err)
+		logger.Fatalf("Run failed: %v", err)
 	}
 
 	var maxFileSize int64 = 0
 	if len(largeFiles) > 0 {
-		fmt.Printf("Found %d large files:\n", len(largeFiles))
+		logger.Infof("Found %d large files:", len(largeFiles))
 		for _, file := range largeFiles {
 			if file.Size > maxFileSize {
 				maxFileSize = file.Size
 			}
-			fmt.Printf("\tPath: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
+			logger.Infof("  Path: %s, Size: %d bytes, Hash: %s", file.Path, file.Size, file.Hash)
 		}
-		fmt.Printf("REJECTED: one or more files exceed maximum size of %s, the largest one is %s\n", githookkit.FormatSize(sizeLimit), githookkit.FormatSize(maxFileSize))
-		os.Exit(1)
+		logger.Fatalf("REJECTED: one or more files exceed maximum size of %s, the largest one is %s\n", githookkit.FormatSize(sizeLimit), githookkit.FormatSize(maxFileSize))
 	}
 }
 

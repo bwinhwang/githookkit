@@ -282,10 +282,6 @@ func TestMainIntegration(t *testing.T) {
 				fmt.Sprintf("HOME=%s", tempDir),
 			},
 			expectedOutput: []string{
-				"test-project",
-				"Test User",
-				"testuser",
-				"refs/heads/master",
 				"Found", // 应该找到一些大文件
 			},
 			wantErr: true,
@@ -327,7 +323,7 @@ func TestMainIntegration(t *testing.T) {
 				fmt.Sprintf("HOME=%s", tempDir),
 			},
 			expectedOutput: []string{
-				"test-project",
+				"Found",
 			},
 			wantErr: true,
 		},
