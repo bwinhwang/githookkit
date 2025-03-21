@@ -13,20 +13,20 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Config 包含所有可能的配置选项
+// Config contains all possible configuration options
 type Config struct {
 	ProjectsWhitelist []string         `yaml:"projects_whitelist"`
 	ProjectSizeLimits map[string]int64 `yaml:"project_size_limits"`
 	LogConfig         LogConfig        `yaml:"log_config"`
 }
 
-// LogConfig 定义日志配置
+// LogConfig defines logging configuration
 type LogConfig struct {
-	Level  string `yaml:"level"`  // 日志级别：debug, info, warn, error
-	Output string `yaml:"output"` // 日志输出：stdout, stderr, 或文件路径
+	Level  string `yaml:"level"`  // Log level: debug, info, warn, error
+	Output string `yaml:"output"` // Log output: stdout, stderr, or file path
 }
 
-// CommandParams 包含所有可能的命令行参数
+// CommandParams contains all possible command line parameters
 type CommandParams struct {
 	Project          string
 	Uploader         string
@@ -37,9 +37,41 @@ type CommandParams struct {
 	CmdRef           string
 }
 
-// LoadConfig 从配置文件加载配置
+// Logger is a wrapper around logrus.Logger that tracks open file resources
+type Logger struct {
+	*logrus.Logger
+	file   *os.File // The file handle if logging to a file
+	level  string   // Current log level
+	output string   // Current output destination
+}
+
+// Close properly closes any resources held by the logger
+func (l *Logger) Close() {
+	if l.file != nil {
+		l.file.Close()
+		l.file = nil
+	}
+}
+
+// GetLevel returns the current log level
+func (l *Logger) GetLevel() logrus.Level {
+	return l.Logger.GetLevel()
+}
+
+// GetOutput returns the current output destination
+func (l *Logger) GetOutput() string {
+	return l.output
+}
+
+// LoadConfig loads configuration from the config file
 func LoadConfig() (Config, error) {
-	configPath := filepath.Join(os.Getenv("HOME"), ".githook_config")
+	// Try both HOME (Linux/macOS) and USERPROFILE (Windows)
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		homeDir = os.Getenv("USERPROFILE")
+	}
+
+	configPath := filepath.Join(homeDir, ".githook_config")
 	configData, err := os.ReadFile(configPath)
 
 	config := Config{
@@ -48,36 +80,39 @@ func LoadConfig() (Config, error) {
 	}
 
 	if err != nil {
-		log.Printf("配置文件不存在或无法读取: %v，使用空配置", err)
+		log.Printf("Config file does not exist or cannot be read: %v, using empty config", err)
 		return config, nil
 	}
 
 	if err := yaml.Unmarshal(configData, &config); err != nil {
-		log.Printf("解析配置文件失败: %v，使用空配置", err)
-		return config, nil
+		log.Printf("Failed to parse config file: %v, using empty config", err)
+		return Config{
+			ProjectsWhitelist: []string{},
+			ProjectSizeLimits: map[string]int64{},
+		}, nil
 	}
 
 	return config, nil
 }
 
-// IsProjectWhitelisted 检查项目是否在白名单中
+// IsProjectWhitelisted checks if a project is in the whitelist
 func IsProjectWhitelisted(config Config, project string) bool {
 	return Contains(config.ProjectsWhitelist, project)
 }
 
-// GetSizeLimit 获取文件大小限制（环境变量或项目特定）
+// GetSizeLimit gets the file size limit (from env var or project-specific)
 func GetSizeLimit(config Config, project string) int64 {
-	// 默认值 5MB
+	// Default value 5MB
 	var sizeLimit int64 = 5 * 1024 * 1024
 
-	// 从环境变量获取
+	// From environment variable
 	if envSize := os.Getenv("GITHOOK_FILE_SIZE_MAX"); envSize != "" {
 		if size, err := strconv.ParseInt(envSize, 10, 64); err == nil {
 			sizeLimit = size
 		}
 	}
 
-	// 检查项目特定的大小限制
+	// Check project-specific size limit
 	if projectLimit, exists := config.ProjectSizeLimits[project]; exists {
 		fmt.Printf("Using project-specific size limit for %s: %s\n", project, githookkit.FormatSize(projectLimit))
 		return projectLimit
@@ -86,7 +121,7 @@ func GetSizeLimit(config Config, project string) int64 {
 	return sizeLimit
 }
 
-// Contains 检查字符串是否在切片中
+// Contains checks if a string is in a slice
 func Contains(slice []string, item string) bool {
 	for _, a := range slice {
 		if a == item {
@@ -96,9 +131,9 @@ func Contains(slice []string, item string) bool {
 	return false
 }
 
-// InitLogger 初始化日志系统
-func InitLogger(config Config) (*logrus.Logger, error) {
-	// 从环境变量获取日志配置（优先于配置文件）
+// InitLogger initializes the logging system
+func InitLogger(config Config) (*Logger, error) {
+	// From environment variables (优先于配置文件)
 	level := os.Getenv("GITHOOK_LOG_LEVEL")
 	if level == "" {
 		level = config.LogConfig.Level
@@ -108,7 +143,7 @@ func InitLogger(config Config) (*logrus.Logger, error) {
 		output = config.LogConfig.Output
 	}
 
-	// 设置默认值
+	// Set default values
 	if level == "" {
 		level = "info"
 	}
@@ -116,18 +151,21 @@ func InitLogger(config Config) (*logrus.Logger, error) {
 		output = "stderr"
 	}
 
-	// 创建logger
-	logger := logrus.New()
+	// Create logger
+	logger := &Logger{
+		Logger: logrus.New(),
+		level:  level,
+		output: output,
+	}
 
-	// 设置日志级别
+	// Set log level
 	logLevel, err := logrus.ParseLevel(level)
 	if err != nil {
-		return nil, fmt.Errorf("无效的日志级别: %w", err)
+		return nil, fmt.Errorf("invalid log level: %w", err)
 	}
 	logger.SetLevel(logLevel)
 
-	// 设置输出格式
-	// 创建不同的格式化器
+	// Create formatters
 	fileFormatter := &logrus.TextFormatter{
 		FullTimestamp:          true,
 		TimestampFormat:        "2006-01-02 15:04:05",
@@ -136,7 +174,7 @@ func InitLogger(config Config) (*logrus.Logger, error) {
 		PadLevelText:           true,
 	}
 
-	// 设置输出目标
+	// Set output target
 	if output == "stdout" || output == "stderr" {
 		var out io.Writer
 		if output == "stdout" {
@@ -150,18 +188,19 @@ func InitLogger(config Config) (*logrus.Logger, error) {
 	} else {
 		fileWriter, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			return nil, fmt.Errorf("无法打开日志文件: %w", err)
+			return nil, fmt.Errorf("failed to open log file: %w", err)
 		}
 
-		// 使用MultiWriter同时输出到文件和标准输出
+		// Store the file handle for later cleanup
+		logger.file = fileWriter
+
+		// Use MultiWriter to output to both file and stdout
 		multiWriter := io.MultiWriter(fileWriter, os.Stdout)
 		logger.SetOutput(multiWriter)
-
-		// 设置不同的格式化器
 		logger.SetFormatter(fileFormatter)
 	}
 
-	logger.Infof("初始化日志系统，级别：%s，输出：%s", level, output)
+	logger.Infof("Initialized logging system, level: %s, output: %s", level, output)
 
 	return logger, nil
 }
@@ -169,12 +208,12 @@ func InitLogger(config Config) (*logrus.Logger, error) {
 type ConsoleFormatter struct{}
 
 func (f *ConsoleFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	// 只提取msg字段的内容
+	// Extract only the msg field content
 	msg, exists := entry.Data["msg"]
 	if !exists {
 		msg = entry.Message
 	}
-	// 根据日志级别设置颜色
+	// Set color based on log level
 	var colorCode string
 	switch entry.Level {
 	case logrus.ErrorLevel, logrus.FatalLevel, logrus.PanicLevel:
@@ -183,7 +222,7 @@ func (f *ConsoleFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 		colorCode = "\033[0m" // Reset
 	}
 
-	// 添加颜色并重置
+	// Add color and reset
 	coloredMsg := fmt.Sprintf("%s%s\033[0m\n", colorCode, msg)
 	return []byte(coloredMsg), nil
 }

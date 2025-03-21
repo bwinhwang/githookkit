@@ -58,7 +58,9 @@ func main() {
 			if file.Size > maxFileSize {
 				maxFileSize = file.Size
 			}
-			logger.Infof("  Path: %s, Size: %d bytes, Hash: %s", file.Path, file.Size, file.Hash)
+
+			logger.Infof("  Path: %s, Size: %d bytes", file.Path, file.Size)
+
 		}
 		logger.Fatalf("REJECTED: one or more files exceed maximum size of %s, the largest one is %s\n", githookkit.FormatSize(sizeLimit), githookkit.FormatSize(maxFileSize))
 	}
@@ -66,15 +68,19 @@ func main() {
 
 func run(startCommit, endCommit string, sizeChecker func(int64) bool) ([]githookkit.FileInfo, error) {
 	// Get all objects
-	objectChan, err := githookkit.GetObjectList(startCommit, endCommit, true)
+	count, err := githookkit.CountCommits(endCommit, startCommit)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get object list: %w", err)
+		return nil, fmt.Errorf("failed to get count: %w", err)
+	}
+	objectChan, err := githookkit.GetObjectList(count, endCommit, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object list: %w", err)
 	}
 
 	// Use GetObjectDetails and size checker to filter objects
 	fileInfoChan, err := githookkit.GetObjectDetails(objectChan, sizeChecker)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get object details: %w", err)
+		return nil, fmt.Errorf("failed to get object details: %w", err)
 	}
 
 	// Collect all matching file information

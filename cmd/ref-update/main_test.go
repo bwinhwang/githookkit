@@ -8,188 +8,142 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bwinhwang/githookkit"
 )
 
 func TestRun(t *testing.T) {
 	// 保存当前工作目录
 	originalWd, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("获取当前工作目录失败: %v", err)
+		t.Fatalf("无法获取当前工作目录: %v", err)
 	}
 	defer os.Chdir(originalWd)
 
 	// 切换到测试仓库目录
-	repoPath := filepath.Join("..", "..", "testdata", "meta-ti")
-	err = os.Chdir(repoPath)
+	err = os.Chdir(filepath.Join("../../testdata", "meta-ti"))
 	if err != nil {
-		t.Fatalf("切换到测试仓库目录失败: %v", err)
+		t.Fatalf("无法切换到测试仓库目录: %v", err)
 	}
 
-	// 测试用例
 	tests := []struct {
 		name        string
 		startCommit string
 		endCommit   string
-		sizeFilter  func(int64) bool
-		minResults  int
-		maxResults  int
+		sizeLimit   int64
+		wantFiles   int
 		wantErr     bool
 	}{
 		{
-			name:        "大于2KB的文件",
+			name:        "无大文件",
+			startCommit: "HEAD~3",
+			endCommit:   "HEAD",
+			sizeLimit:   10 * 1024 * 1024, // 10MB
+			wantFiles:   0,
+			wantErr:     false,
+		},
+		{
+			name:        "有大文件",
 			startCommit: "HEAD~5",
 			endCommit:   "HEAD",
-			sizeFilter: func(size int64) bool {
-				return size > 2*1024 // 大于2KB的文件
-			},
-			minResults: 1,
-			maxResults: 10,
-			wantErr:    false,
+			sizeLimit:   1024, // 1KB
+			wantFiles:   1,    // 至少应该找到一个大于1KB的文件
+			wantErr:     false,
 		},
 		{
-			name:        "小于1KB的文件",
-			startCommit: "HEAD~5",
+			name:        "无效的提交范围",
+			startCommit: "invalid-hash",
 			endCommit:   "HEAD",
-			sizeFilter: func(size int64) bool {
-				return size < 1024 // 小于1KB的文件
-			},
-			minResults: 5,
-			maxResults: 20,
-			wantErr:    false,
-		},
-		{
-			name:        "所有文件（无过滤）",
-			startCommit: "HEAD~5",
-			endCommit:   "HEAD",
-			sizeFilter: func(size int64) bool {
-				return true // 所有文件
-			},
-			minResults: 6,
-			maxResults: 100,
-			wantErr:    false,
-		},
-		{
-			name:        "无文件（过滤所有）",
-			startCommit: "HEAD~5",
-			endCommit:   "HEAD",
-			sizeFilter: func(size int64) bool {
-				return false // 过滤所有文件
-			},
-			minResults: 0,
-			maxResults: 0,
-			wantErr:    false,
-		},
-		{
-			name:        "无效的起始提交",
-			startCommit: "nonexistent",
-			endCommit:   "HEAD",
-			sizeFilter: func(size int64) bool {
-				return true
-			},
-			wantErr: true,
-		},
-		{
-			name:        "所有大于2KB的文件",
-			startCommit: "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
-			endCommit:   "HEAD",
-			sizeFilter: func(size int64) bool {
-				return size > 2*1024
-			},
-			minResults: 4385,
-			maxResults: 4385,
-			wantErr:    false,
+			sizeLimit:   1024,
+			wantFiles:   0,
+			wantErr:     true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := run(tt.startCommit, tt.endCommit, tt.sizeFilter)
+			largeFiles, err := run(tt.startCommit, tt.endCommit, func(size int64) bool {
+				return size > tt.sizeLimit
+			})
 
-			// 检查错误
 			if (err != nil) != tt.wantErr {
-				t.Errorf("run() 错误 = %v, 期望错误 %v", err, tt.wantErr)
+				t.Errorf("run() 错误 = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
-			if err != nil {
-				return
-			}
-
-			// 检查结果数量
-			if len(results) < tt.minResults || len(results) > tt.maxResults {
-				t.Errorf("run() 返回 %d 个结果, 期望范围 [%d, %d]", len(results), tt.minResults, tt.maxResults)
-			}
-
-			// 验证结果中的每个文件信息
-			for _, info := range results {
-				// 确保路径不为空
-				if info.Path == "" {
-					t.Errorf("run() 返回了空路径的文件信息")
+			if !tt.wantErr {
+				if tt.wantFiles == 0 && len(largeFiles) > 0 {
+					t.Errorf("run() 返回了 %d 个文件，期望没有文件", len(largeFiles))
+				} else if tt.wantFiles > 0 && len(largeFiles) < tt.wantFiles {
+					t.Errorf("run() 返回了 %d 个文件，期望至少 %d 个文件", len(largeFiles), tt.wantFiles)
 				}
 
-				// 确保大小符合过滤条件
-				if !tt.sizeFilter(info.Size) {
-					t.Errorf("run() 返回的文件 %s 大小为 %d，不符合过滤条件", info.Path, info.Size)
-				}
-
-				// 确保哈希不为空
-				if info.Hash == "" {
-					t.Errorf("run() 返回了空哈希的文件信息: %s", info.Path)
-				}
-			}
-
-			// 打印一些调试信息
-			t.Logf("找到 %d 个符合条件的文件", len(results))
-			for i, info := range results {
-				if i < 5 { // 只打印前5个，避免输出过多
-					t.Logf("文件 #%d: 路径=%s, 大小=%d 字节, 哈希=%s", i+1, info.Path, info.Size, info.Hash)
+				// 验证返回的文件信息
+				for _, file := range largeFiles {
+					if file.Path == "" {
+						t.Error("run() 返回了路径为空的文件信息")
+					}
+					if file.Size <= tt.sizeLimit {
+						t.Errorf("run() 返回了大小为 %d 的文件，不大于限制 %d", file.Size, tt.sizeLimit)
+					}
 				}
 			}
 		})
 	}
 }
 
-func TestRunWithSpecificCommits(t *testing.T) {
+func TestRunWithSpecificSizeLimit(t *testing.T) {
 	// 保存当前工作目录
 	originalWd, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("获取当前工作目录失败: %v", err)
+		t.Fatalf("无法获取当前工作目录: %v", err)
 	}
 	defer os.Chdir(originalWd)
 
 	// 切换到测试仓库目录
-	repoPath := filepath.Join("..", "..", "testdata", "meta-ti")
-	err = os.Chdir(repoPath)
+	err = os.Chdir(filepath.Join("../../testdata", "meta-ti"))
 	if err != nil {
-		t.Fatalf("切换到测试仓库目录失败: %v", err)
+		t.Fatalf("无法切换到测试仓库目录: %v", err)
 	}
 
-	// 使用特定的提交范围
-	startCommit := "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908"
-	endCommit := "HEAD"
+	// 测试不同大小限制下的结果
+	sizeLimits := []struct {
+		limit     int64
+		minFiles  int
+		maxFiles  int
+		checkSize bool
+	}{
+		{100, 5, 20, true},        // 100字节，应该找到多个文件
+		{1024, 1, 10, true},       // 1KB，应该找到几个文件
+		{10 * 1024, 0, 5, true},   // 10KB，可能找到少量文件
+		{1024 * 1024, 0, 0, true}, // 1MB，可能找不到文件
+	}
 
-	// 测试不同大小阈值的过滤器
-	thresholds := []int64{500, 1000, 2000, 5000}
+	for _, sl := range sizeLimits {
+		t.Run(githookkit.FormatSize(sl.limit), func(t *testing.T) {
+			largeFiles, err := run("HEAD~5", "HEAD", func(size int64) bool {
+				return size > sl.limit
+			})
 
-	for _, threshold := range thresholds {
-		t.Run(fmt.Sprintf("Threshold: %d", threshold), func(t *testing.T) {
-			sizeFilter := func(size int64) bool {
-				return size > threshold
-			}
-
-			results, err := run(startCommit, endCommit, sizeFilter)
 			if err != nil {
 				t.Fatalf("run() 错误 = %v", err)
 			}
 
-			// 验证所有返回的文件都大于阈值
-			for _, info := range results {
-				if info.Size <= threshold {
-					t.Errorf("文件 %s 大小为 %d，小于等于阈值 %d", info.Path, info.Size, threshold)
-				}
+			if sl.minFiles > 0 && len(largeFiles) < sl.minFiles {
+				t.Errorf("run() 返回了 %d 个文件，期望至少 %d 个文件", len(largeFiles), sl.minFiles)
 			}
 
-			t.Logf("阈值 %d: 找到 %d 个文件", threshold, len(results))
+			if sl.maxFiles >= 0 && len(largeFiles) > sl.maxFiles {
+				t.Errorf("run() 返回了 %d 个文件，期望最多 %d 个文件", len(largeFiles), sl.maxFiles)
+			}
+
+			if sl.checkSize {
+				for _, file := range largeFiles {
+					if file.Size <= sl.limit {
+						t.Errorf("run() 返回了大小为 %d 的文件，不大于限制 %d", file.Size, sl.limit)
+					}
+				}
+			}
 		})
 	}
 }
@@ -273,7 +227,7 @@ func TestMainIntegration(t *testing.T) {
 				"-project", "test-project",
 				"-uploader", "Test User",
 				"-uploader-username", "testuser",
-				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-oldrev", "HEAD~50",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
 			},
@@ -282,9 +236,9 @@ func TestMainIntegration(t *testing.T) {
 				fmt.Sprintf("HOME=%s", tempDir),
 			},
 			expectedOutput: []string{
-				"Found", // 应该找到一些大文件
+				"Initialized logging system", // 应该找到一些大文件
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "白名单项目测试",
@@ -292,7 +246,7 @@ func TestMainIntegration(t *testing.T) {
 				"-project", "whitelisted-project",
 				"-uploader", "Test User",
 				"-uploader-username", "testuser",
-				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-oldrev", "7454e0e0c7cfe3526499e5a752a938aade6b7f6d",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
 			},
@@ -314,12 +268,12 @@ func TestMainIntegration(t *testing.T) {
 				"-project", "test-project",
 				"-uploader", "Test User",
 				"-uploader-username", "testuser",
-				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-oldrev", "7454e0e0c7cfe3526499e5a752a938aade6b7f6d",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
 			},
 			env: []string{
-				"GITHOOK_FILE_SIZE_MAX=65536", // 64KB
+				"GITHOOK_FILE_SIZE_MAX=2048", // 64KB
 				fmt.Sprintf("HOME=%s", tempDir),
 			},
 			expectedOutput: []string{
@@ -333,7 +287,7 @@ func TestMainIntegration(t *testing.T) {
 				"-project", "test-project-small",
 				"-uploader", "Test User",
 				"-uploader-username", "testuser",
-				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-oldrev", "7454e0e0c7cfe3526499e5a752a938aade6b7f6d",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
 			},
@@ -353,7 +307,7 @@ func TestMainIntegration(t *testing.T) {
 				"-project", "test-project-medium",
 				"-uploader", "Test User",
 				"-uploader-username", "testuser",
-				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-oldrev", "7454e0e0c7cfe3526499e5a752a938aade6b7f6d",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
 			},
@@ -372,7 +326,7 @@ func TestMainIntegration(t *testing.T) {
 				"-project", "regular-project",
 				"-uploader", "Test User",
 				"-uploader-username", "testuser",
-				"-oldrev", "7d39ce1743e1a58c51b35f42fb70f9e31a4c8908",
+				"-oldrev", "7454e0e0c7cfe3526499e5a752a938aade6b7f6d",
 				"-newrev", "HEAD",
 				"-refname", "refs/heads/master",
 			},

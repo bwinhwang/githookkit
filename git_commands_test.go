@@ -25,7 +25,7 @@ func TestGetObjectList(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		startCommit string
+		commitCount int
 		endCommit   string
 		wantErr     bool
 		minObjects  int  // 至少应该有这么多对象
@@ -33,7 +33,7 @@ func TestGetObjectList(t *testing.T) {
 	}{
 		{
 			name:        "Valid commit range",
-			startCommit: "HEAD~5",
+			commitCount: 5,
 			endCommit:   "HEAD",
 			wantErr:     false,
 			minObjects:  40,
@@ -41,13 +41,13 @@ func TestGetObjectList(t *testing.T) {
 		},
 		{
 			name:        "Invalid start commit",
-			startCommit: "nonexistent",
+			commitCount: 999999,
 			endCommit:   "HEAD",
 			wantErr:     true,
 		},
 		{
 			name:        "Empty commit range",
-			startCommit: "HEAD",
+			commitCount: 0,
 			endCommit:   "HEAD",
 			wantErr:     false,
 			minObjects:  0,
@@ -57,7 +57,7 @@ func TestGetObjectList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			objectChan, err := GetObjectList(tt.startCommit, tt.endCommit, tt.includePath)
+			objectChan, err := GetObjectList(tt.commitCount, tt.endCommit, tt.includePath)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetObjectList() error = %v, wantErr %v", err, tt.wantErr)
@@ -103,7 +103,7 @@ func TestGetObjectListWithSpecificCommits(t *testing.T) {
 	headCommitStr := strings.TrimSpace(string(headCommit))
 
 	t.Run("Specific commit range", func(t *testing.T) {
-		objectChan, err := GetObjectList(headCommitStr+"~1", headCommitStr, false) // 设置为 false
+		objectChan, err := GetObjectList(1, headCommitStr, false)
 		if err != nil {
 			t.Fatalf("GetObjectList() error = %v", err)
 		}
@@ -380,7 +380,7 @@ func TestGetObjectDetailsWithSizeFilter(t *testing.T) {
 	}
 
 	// 获取所有大于1MB的文件
-	objectChan, _ := GetObjectList("HEAD~5", "HEAD", true)
+	objectChan, _ := GetObjectList(5, "HEAD", true)
 
 	fileInfoChan, _ := GetObjectDetails(objectChan, func(size int64) bool {
 		return size > 2*1024 // 只包含大于2KB的文件
@@ -399,7 +399,7 @@ func TestGetObjectDetailsWithSizeFilter(t *testing.T) {
 	}
 
 	// 获取所有小于100KB的文件
-	objectChan, _ = GetObjectList("HEAD~5", "HEAD", true)
+	objectChan, _ = GetObjectList(5, "HEAD", true)
 	fileInfoChan, _ = GetObjectDetails(objectChan, func(size int64) bool {
 		return size < 1024 // 只包含小于100KB的文件
 	})

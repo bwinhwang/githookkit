@@ -11,7 +11,6 @@ import (
 
 // File information structure
 type FileInfo struct {
-	Hash string
 	Size int64
 	Path string
 }
@@ -36,57 +35,67 @@ func FormatSize(size int64) string {
 		return fmt.Sprintf("%d B", size)
 	}
 }
-
-// Count the number of commits in the repository
 func CountCommits(newRev, oldRev string) (int, error) {
-	cmd := exec.Command("git", "rev-list", "--count", fmt.Sprintf("%s..%s", oldRev, newRev))
+
+	var cmds []string
+	cmds = append(cmds, "git")
+	cmds = append(cmds, "rev-list")
+	cmds = append(cmds, "--count")
+
+	if oldRev == "0000000000000000000000000000000000000000" {
+		cmds = append(cmds, newRev)
+		cmds = append(cmds, "--not")
+		cmds = append(cmds, "--all")
+	} else {
+		cmds = append(cmds, fmt.Sprintf("%s..%s", oldRev, newRev))
+	}
+	cmd := exec.Command(cmds[0], cmds[1:]...)
+
 	output, err := cmd.Output()
 	if err != nil {
-		return 0, fmt.Errorf("Failed to execute git rev-list: %w", err)
+		return 0, fmt.Errorf("failed to execute git rev-list: %w", err)
 	}
 
 	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
 	if err != nil {
-		return 0, fmt.Errorf("Failed to parse commit count: %w", err)
+		return 0, fmt.Errorf("failed to parse commit count: %w", err)
 	}
 
 	return count, nil
 }
 
 // GetObjectList returns a channel of object hashes in the specified commit range
-func GetObjectList(startCommit, endCommit string, includePath bool) (<-chan string, error) {
+func GetObjectList(counts int, endCommit string, includePath bool) (<-chan string, error) {
+
+	startCommit := fmt.Sprintf("%s~%d", endCommit, counts)
 	validateCmd := exec.Command("git", "rev-parse", "--verify", startCommit)
 	if err := validateCmd.Run(); err != nil {
-		return nil, fmt.Errorf("Invalid start commit: %w", err)
+		return nil, fmt.Errorf("invalid start commit %s: %w", startCommit, err)
 	}
 
 	validateCmd = exec.Command("git", "rev-parse", "--verify", endCommit)
 	if err := validateCmd.Run(); err != nil {
-		return nil, fmt.Errorf("Invalid end commit: %w", err)
+		return nil, fmt.Errorf("invalid end commit %s: %w", endCommit, err)
 	}
 
 	var cmds []string
 	cmds = append(cmds, "git")
 	cmds = append(cmds, "rev-list")
 	cmds = append(cmds, "--objects")
+	cmds = append(cmds, fmt.Sprintf("%s..%s", startCommit, endCommit))
 
-	if startCommit == "0000000000000000000000000000000000000000" {
-		cmds = append(cmds, "--all")
-		cmds = append(cmds, fmt.Sprintf("%s", endCommit))
-	} else {
-		cmds = append(cmds, fmt.Sprintf("%s..%s", startCommit, endCommit))
-	}
+	fmt.Printf("%s\n", strings.Join(cmds, " "))
 	cmd := exec.Command(cmds[0], cmds[1:]...)
 	output, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create stdout pipe: %w", err)
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
 	objectChan := make(chan string)
 
 	if err := cmd.Start(); err != nil {
 		output.Close()
-		return nil, fmt.Errorf("Failed to start command: %w", err)
+		return nil, fmt.Errorf("failed to start command: %w", err)
 	}
 
 	go func() {
@@ -167,7 +176,7 @@ func processObjectBatch(objects []string, resultChan chan<- FileInfo, sizeFilter
 
 		matches := re.FindStringSubmatch(line)
 		if len(matches) >= 4 {
-			hash := matches[1]
+			//hash := matches[1]
 			size, _ := strconv.ParseInt(matches[2], 10, 64)
 			objType := matches[3]
 			var path string
@@ -180,7 +189,6 @@ func processObjectBatch(objects []string, resultChan chan<- FileInfo, sizeFilter
 			// 应用大小过滤条件（如果提供）
 			if objType == "blob" && path != "" && (sizeFilter == nil || sizeFilter(size)) {
 				resultChan <- FileInfo{
-					Hash: hash,
 					Size: size,
 					Path: path,
 				}
@@ -191,61 +199,4 @@ func processObjectBatch(objects []string, resultChan chan<- FileInfo, sizeFilter
 	if err := scanner.Err(); err != nil {
 		fmt.Printf("Debug: Error scanning output: %v\n", err)
 	}
-}
-
-// 辅助函数，返回两个整数中的较小值
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// List files in a commit
-// Use git diff-tree --no-commit-id --name-only --diff-filter=ACMRTUXB -r {commit}
-func ListFilesInCommit(commitHash string) ([]string, error) {
-	cmd := exec.Command("git", "diff-tree", "--no-commit-id", "--name-only", "--diff-filter=ACMRTUXB", "-r", commitHash)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("Failed to execute git diff-tree: %w", err)
-	}
-
-	files := strings.Split(strings.TrimSpace(string(output)), "\n")
-	// Handle empty output case
-	if len(files) == 1 && files[0] == "" {
-		return []string{}, nil
-	}
-	return files, nil
-}
-
-// Check the size of a single file
-// Use git ls-tree -l {commit} {filename}
-func CheckFileSize(commitHash, filename string) (int64, error) {
-	cmd := exec.Command("git", "ls-tree", "-l", commitHash, filename)
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("Failed to execute git ls-tree: %w", err)
-	}
-
-	// Output format: <mode> <type> <object> <size> <file>
-	parts := strings.Fields(string(output))
-	if len(parts) < 4 {
-		return 0, fmt.Errorf("Unable to parse git ls-tree output")
-	}
-
-	size, err := strconv.ParseInt(parts[3], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("Failed to parse file size: %w", err)
-	}
-
-	return size, nil
-}
-
-// Get the human-readable format of the file size
-func GetFormattedFileSize(commitHash, filename string) (string, error) {
-	size, err := CheckFileSize(commitHash, filename)
-	if err != nil {
-		return "", err
-	}
-	return FormatSize(size), nil
 }
