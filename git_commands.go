@@ -37,17 +37,30 @@ func FormatSize(size int64) string {
 	}
 }
 
-// Count the number of commits in the repository
 func CountCommits(newRev, oldRev string) (int, error) {
-	cmd := exec.Command("git", "rev-list", "--count", fmt.Sprintf("%s..%s", oldRev, newRev))
+
+	var cmds []string
+	cmds = append(cmds, "git")
+	cmds = append(cmds, "rev-list")
+	cmds = append(cmds, "--count")
+
+	if oldRev == "0000000000000000000000000000000000000000" {
+		cmds = append(cmds, newRev)
+		cmds = append(cmds, "--not")
+		cmds = append(cmds, "--all")
+	} else {
+		cmds = append(cmds, fmt.Sprintf("%s..%s", oldRev, newRev))
+	}
+	cmd := exec.Command(cmds[0], cmds[1:]...)
+
 	output, err := cmd.Output()
 	if err != nil {
-		return 0, fmt.Errorf("Failed to execute git rev-list: %w", err)
+		return 0, fmt.Errorf("failed to execute git rev-list: %w", err)
 	}
 
 	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
 	if err != nil {
-		return 0, fmt.Errorf("Failed to parse commit count: %w", err)
+		return 0, fmt.Errorf("failed to parse commit count: %w", err)
 	}
 
 	return count, nil

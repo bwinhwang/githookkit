@@ -35,51 +35,12 @@ func main() {
 		os.Exit(0) // Exit normally, no error
 	}
 
-	sizeLimit := config.GetSizeLimit(cfg, *project)
-
-	largeFiles, err := run(*oldRev, *newRev, func(size int64) bool {
-		return size > sizeLimit // Use environment variable or default value
-	})
+	count, err := githookkit.CountCommits(*newRev, *oldRev)
 
 	if err != nil {
 		log.Fatalf("Run failed: %v", err)
 	}
 
-	var maxFileSize int64 = 0
-	if len(largeFiles) > 0 {
-		fmt.Printf("Found %d large files:\n", len(largeFiles))
-		for _, file := range largeFiles {
-			if file.Size > maxFileSize {
-				maxFileSize = file.Size
-			}
-			fmt.Printf("\tPath: %s, Size: %d bytes, Hash: %s\n", file.Path, file.Size, file.Hash)
-		}
-		fmt.Printf("REJECTED: one or more files exceed maximum size of %s, the largest one is %s\n", githookkit.FormatSize(sizeLimit), githookkit.FormatSize(maxFileSize))
-		os.Exit(1)
-	}
-}
+	fmt.Printf("commits: %d", count)
 
-func run(startCommit, endCommit string, sizeChecker func(int64) bool) ([]githookkit.FileInfo, error) {
-	// Get all objects
-	objectChan, err := githookkit.GetObjectList(startCommit, endCommit, true)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get object list: %w", err)
-	}
-
-	// Use GetObjectDetails and size checker to filter objects
-	fileInfoChan, err := githookkit.GetObjectDetails(objectChan, sizeChecker)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get object details: %w", err)
-	}
-
-	// Collect all matching file information
-	var results []githookkit.FileInfo
-	for fileInfo := range fileInfoChan {
-		// Ensure object has path and size information
-		if fileInfo.Path != "" {
-			results = append(results, fileInfo)
-		}
-	}
-
-	return results, nil
 }
