@@ -72,7 +72,18 @@ func run(startCommit, endCommit string, sizeChecker func(int64) bool) ([]githook
 	if err != nil {
 		return nil, fmt.Errorf("failed to get count: %w", err)
 	}
-	objectChan, err := githookkit.GetObjectList(count, endCommit, true)
+	assuredStartCommit := fmt.Sprintf("%s~%d", endCommit, count)
+
+	var objectChan <-chan string
+	isOk := githookkit.VerifyCommit(assuredStartCommit)
+
+	if isOk {
+		objectChan, err = githookkit.GetSpanObjectList(assuredStartCommit, endCommit, true)
+
+	} else {
+		objectChan, err = githookkit.GetSingleCommitObjectList(endCommit, true)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object list: %w", err)
 	}

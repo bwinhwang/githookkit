@@ -9,77 +9,6 @@ import (
 	"testing"
 )
 
-func TestGetObjectList(t *testing.T) {
-	// 保存当前工作目录
-	originalWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get current working directory: %v", err)
-	}
-	defer os.Chdir(originalWd)
-
-	// 切换到测试仓库目录
-	err = os.Chdir(filepath.Join("testdata", "meta-ti"))
-	if err != nil {
-		t.Fatalf("Failed to change to test repository directory: %v", err)
-	}
-
-	tests := []struct {
-		name        string
-		commitCount int
-		endCommit   string
-		wantErr     bool
-		minObjects  int  // 至少应该有这么多对象
-		includePath bool // 新增参数
-	}{
-		{
-			name:        "Valid commit range",
-			commitCount: 5,
-			endCommit:   "HEAD",
-			wantErr:     false,
-			minObjects:  40,
-			includePath: false, // 设置为 false
-		},
-		{
-			name:        "Invalid start commit",
-			commitCount: 999999,
-			endCommit:   "HEAD",
-			wantErr:     true,
-		},
-		{
-			name:        "Empty commit range",
-			commitCount: 0,
-			endCommit:   "HEAD",
-			wantErr:     false,
-			minObjects:  0,
-			includePath: false, // 设置为 false
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			objectChan, err := GetObjectList(tt.commitCount, tt.endCommit, tt.includePath)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetObjectList() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if err != nil {
-				return
-			}
-
-			objectCount := 0
-			for range objectChan {
-				objectCount++
-			}
-
-			if objectCount < tt.minObjects {
-				t.Errorf("GetObjectList() got %d objects, want at least %d", objectCount, tt.minObjects)
-			}
-		})
-	}
-}
-
 func TestGetObjectListWithSpecificCommits(t *testing.T) {
 	// 保存当前工作目录
 	originalWd, err := os.Getwd()
@@ -102,10 +31,18 @@ func TestGetObjectListWithSpecificCommits(t *testing.T) {
 	}
 	headCommitStr := strings.TrimSpace(string(headCommit))
 
+	// Get HEAD~1 commit hash
+	cmd = exec.Command("git", "rev-parse", "HEAD~1")
+	headMinus1Commit, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to get HEAD~1 commit: %v", err)
+	}
+	headMinus1CommitStr := strings.TrimSpace(string(headMinus1Commit))
+
 	t.Run("Specific commit range", func(t *testing.T) {
-		objectChan, err := GetObjectList(1, headCommitStr, false)
+		objectChan, err := GetSpanObjectList(headMinus1CommitStr, headCommitStr, false)
 		if err != nil {
-			t.Fatalf("GetObjectList() error = %v", err)
+			t.Fatalf("GetSpanObjectList() error = %v", err)
 		}
 
 		// 收集所有对象哈希
@@ -116,12 +53,11 @@ func TestGetObjectListWithSpecificCommits(t *testing.T) {
 
 		// 验证获取的对象列表不为空
 		if len(objects) == 0 {
-			t.Error("GetObjectList() returned no objects")
+			t.Error("GetSpanObjectList() returned no objects")
 		}
 
 		// 验证所有返回的哈希都是有效的 git 对象
 		for object := range objects {
-
 			cmd := exec.Command("git", "cat-file", "-t", object)
 			if err := cmd.Run(); err != nil {
 				t.Errorf("Invalid git object hash returned: %s", object)
@@ -380,7 +316,7 @@ func TestGetObjectDetailsWithSizeFilter(t *testing.T) {
 	}
 
 	// 获取所有大于1MB的文件
-	objectChan, _ := GetObjectList(5, "HEAD", true)
+	objectChan, _ := GetSingleCommitObjectList("HEAD", true)
 
 	fileInfoChan, _ := GetObjectDetails(objectChan, func(size int64) bool {
 		return size > 2*1024 // 只包含大于2KB的文件
@@ -394,12 +330,12 @@ func TestGetObjectDetailsWithSizeFilter(t *testing.T) {
 	}
 
 	// 验证结果为空
-	if len(fileInfos) != 1 {
-		t.Errorf("fileInfos returned ONE results, but %d found", len(fileInfos))
+	if len(fileInfos) != 4501 {
+		t.Errorf("fileInfos returned 4501 results, but %d found", len(fileInfos))
 	}
 
 	// 获取所有小于100KB的文件
-	objectChan, _ = GetObjectList(5, "HEAD", true)
+	objectChan, _ = GetSingleCommitObjectList("HEAD", true)
 	fileInfoChan, _ = GetObjectDetails(objectChan, func(size int64) bool {
 		return size < 1024 // 只包含小于100KB的文件
 	})
@@ -411,8 +347,8 @@ func TestGetObjectDetailsWithSizeFilter(t *testing.T) {
 	}
 
 	// 验证结果为空
-	if len(fileInfos) != 5 {
-		t.Errorf("fileInfos returned FIVE results, but %d found", len(fileInfos))
+	if len(fileInfos) != 4222 {
+		t.Errorf("fileInfos returned 4222 results, but %d found", len(fileInfos))
 	}
 }
 
@@ -492,5 +428,243 @@ func TestFormatSize(t *testing.T) {
 		if result != test.expected {
 			t.Errorf("FormatSize(%d) = %s; want %s", test.size, result, test.expected)
 		}
+	}
+}
+
+func TestGetSingleCommitObjectList(t *testing.T) {
+	// Save current working directory
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+	defer os.Chdir(originalWd)
+
+	// Change to test repository directory
+	err = os.Chdir(filepath.Join("testdata", "meta-ti"))
+	if err != nil {
+		t.Fatalf("Failed to change to test repository directory: %v", err)
+	}
+
+	// Get a valid commit hash
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	headCommit, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to get HEAD commit: %v", err)
+	}
+	headCommitStr := strings.TrimSpace(string(headCommit))
+
+	tests := []struct {
+		name        string
+		commit      string
+		includePath bool
+		wantErr     bool
+		minObjects  int
+	}{
+		{
+			name:        "Valid commit with hash only",
+			commit:      headCommitStr,
+			includePath: false,
+			wantErr:     false,
+			minObjects:  10, // Expect at least some objects
+		},
+		{
+			name:        "Valid commit with path",
+			commit:      headCommitStr,
+			includePath: true,
+			wantErr:     false,
+			minObjects:  10,
+		},
+		{
+			name:        "Invalid commit",
+			commit:      "invalid-commit-hash",
+			includePath: false,
+			wantErr:     true,
+			minObjects:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objectChan, err := GetSingleCommitObjectList(tt.commit, tt.includePath)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetSingleCommitObjectList() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if err != nil {
+				return
+			}
+
+			objectCount := 0
+			for obj := range objectChan {
+				objectCount++
+				// If includePath is true, check if there's a space (indicating path is included)
+				if tt.includePath && !strings.Contains(obj, " ") && len(obj) > 40 {
+					t.Errorf("Expected path in object but got: %s", obj)
+				}
+			}
+
+			if objectCount < tt.minObjects {
+				t.Errorf("GetSingleCommitObjectList() got %d objects, want at least %d", objectCount, tt.minObjects)
+			}
+		})
+	}
+}
+
+func TestGetSpanObjectList(t *testing.T) {
+	// Save current working directory
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+	defer os.Chdir(originalWd)
+
+	// Change to test repository directory
+	err = os.Chdir(filepath.Join("testdata", "meta-ti"))
+	if err != nil {
+		t.Fatalf("Failed to change to test repository directory: %v", err)
+	}
+
+	// Get HEAD and HEAD~1 commit hashes
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	headCommit, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to get HEAD commit: %v", err)
+	}
+	headCommitStr := strings.TrimSpace(string(headCommit))
+
+	cmd = exec.Command("git", "rev-parse", "HEAD~1")
+	headMinus1Commit, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to get HEAD~1 commit: %v", err)
+	}
+	headMinus1CommitStr := strings.TrimSpace(string(headMinus1Commit))
+
+	tests := []struct {
+		name        string
+		startCommit string
+		endCommit   string
+		includePath bool
+		wantErr     bool
+		minObjects  int
+	}{
+		{
+			name:        "Valid commit range hash only",
+			startCommit: headMinus1CommitStr,
+			endCommit:   headCommitStr,
+			includePath: false,
+			wantErr:     false,
+			minObjects:  1, // At least one object difference between HEAD~1 and HEAD
+		},
+		{
+			name:        "Valid commit range with path",
+			startCommit: headMinus1CommitStr,
+			endCommit:   headCommitStr,
+			includePath: true,
+			wantErr:     false,
+			minObjects:  1,
+		},
+		{
+			name:        "Invalid start commit",
+			startCommit: "invalid-commit-hash",
+			endCommit:   headCommitStr,
+			includePath: false,
+			wantErr:     true,
+			minObjects:  0,
+		},
+		{
+			name:        "Invalid end commit",
+			startCommit: headMinus1CommitStr,
+			endCommit:   "invalid-commit-hash",
+			includePath: false,
+			wantErr:     true,
+			minObjects:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objectChan, err := GetSpanObjectList(tt.startCommit, tt.endCommit, tt.includePath)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetSpanObjectList() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if err != nil {
+				return
+			}
+
+			objectCount := 0
+			for obj := range objectChan {
+				objectCount++
+				// If includePath is true, check if objects with paths have spaces
+				if tt.includePath && strings.Contains(obj, " ") {
+					parts := strings.SplitN(obj, " ", 2)
+					if len(parts[0]) != 40 { // Git hash is 40 characters
+						t.Errorf("Invalid hash format in object: %s", obj)
+					}
+				}
+			}
+
+			if objectCount < tt.minObjects {
+				t.Errorf("GetSpanObjectList() got %d objects, want at least %d", objectCount, tt.minObjects)
+			}
+		})
+	}
+}
+
+func TestVerifyCommit(t *testing.T) {
+	// Save current working directory
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current working directory: %v", err)
+	}
+	defer os.Chdir(originalWd)
+
+	// Change to test repository directory
+	err = os.Chdir(filepath.Join("testdata", "meta-ti"))
+	if err != nil {
+		t.Fatalf("Failed to change to test repository directory: %v", err)
+	}
+
+	// Get a valid commit hash
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	headCommit, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to get HEAD commit: %v", err)
+	}
+	headCommitStr := strings.TrimSpace(string(headCommit))
+
+	tests := []struct {
+		name   string
+		commit string
+		want   bool
+	}{
+		{
+			name:   "Valid commit",
+			commit: headCommitStr,
+			want:   true,
+		},
+		{
+			name:   "Invalid commit hash",
+			commit: "invalid-commit-hash",
+			want:   false,
+		},
+		{
+			name:   "Empty commit hash",
+			commit: "",
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := VerifyCommit(tt.commit)
+			if got != tt.want {
+				t.Errorf("VerifyCommit() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

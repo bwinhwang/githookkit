@@ -64,18 +64,75 @@ func CountCommits(newRev, oldRev string) (int, error) {
 	return count, nil
 }
 
-// GetObjectList returns a channel of object hashes in the specified commit range
-func GetObjectList(counts int, endCommit string, includePath bool) (<-chan string, error) {
+func VerifyCommit(commit string) bool {
+	cmd := exec.Command("git", "rev-parse", "--verify", commit)
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return true
+}
 
-	startCommit := fmt.Sprintf("%s~%d", endCommit, counts)
-	validateCmd := exec.Command("git", "rev-parse", "--verify", startCommit)
-	if err := validateCmd.Run(); err != nil {
-		return nil, fmt.Errorf("invalid start commit %s: %w", startCommit, err)
+// GetObjectList returns a channel of object hashes in the specified commit range
+func GetSingleCommitObjectList(commit string, includePath bool) (<-chan string, error) {
+	// First verify if the commit is valid
+	if !VerifyCommit(commit) {
+		return nil, fmt.Errorf("invalid commit hash: %s", commit)
 	}
 
-	validateCmd = exec.Command("git", "rev-parse", "--verify", endCommit)
-	if err := validateCmd.Run(); err != nil {
-		return nil, fmt.Errorf("invalid end commit %s: %w", endCommit, err)
+	var cmds []string
+	cmds = append(cmds, "git")
+	cmds = append(cmds, "rev-list")
+	cmds = append(cmds, "--objects")
+	cmds = append(cmds, "--all")
+	cmds = append(cmds, commit)
+
+	fmt.Printf("%s\n", strings.Join(cmds, " "))
+	cmd := exec.Command(cmds[0], cmds[1:]...)
+	output, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+
+	objectChan := make(chan string)
+
+	if err := cmd.Start(); err != nil {
+		output.Close()
+		return nil, fmt.Errorf("failed to start command: %w", err)
+	}
+
+	go func() {
+		defer close(objectChan)
+		defer output.Close()
+
+		scanner := bufio.NewScanner(output)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if includePath {
+				objectChan <- line // 发送包含路径的行
+			} else {
+				parts := strings.Fields(line)
+				if len(parts) > 0 {
+					objectChan <- parts[0] // 仅发送哈希
+				}
+			}
+		}
+
+		if err := cmd.Wait(); err != nil {
+			return
+		}
+	}()
+
+	return objectChan, nil
+}
+
+// GetObjectList returns a channel of object hashes in the specified commit range
+func GetSpanObjectList(startCommit, endCommit string, includePath bool) (<-chan string, error) {
+	// Verify if both commits are valid
+	if !VerifyCommit(startCommit) {
+		return nil, fmt.Errorf("invalid start commit hash: %s", startCommit)
+	}
+	if !VerifyCommit(endCommit) {
+		return nil, fmt.Errorf("invalid end commit hash: %s", endCommit)
 	}
 
 	var cmds []string

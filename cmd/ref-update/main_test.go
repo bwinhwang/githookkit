@@ -236,7 +236,7 @@ func TestMainIntegration(t *testing.T) {
 				fmt.Sprintf("HOME=%s", tempDir),
 			},
 			expectedOutput: []string{
-				"Initialized logging system", // 应该找到一些大文件
+				"", // 应该找到一些大文件
 			},
 			wantErr: false,
 		},

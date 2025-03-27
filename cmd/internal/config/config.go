@@ -200,7 +200,7 @@ func InitLogger(config Config) (*Logger, error) {
 		logger.SetFormatter(fileFormatter)
 	}
 
-	logger.Infof("Initialized logging system, level: %s, output: %s", level, output)
+	//logger.Infof("Initialized logging system, level: %s, output: %s", level, output)
 
 	return logger, nil
 }
