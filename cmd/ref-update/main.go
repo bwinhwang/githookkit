@@ -68,6 +68,14 @@ func main() {
 
 func run(startCommit, endCommit string, sizeChecker func(int64) bool) ([]githookkit.FileInfo, error) {
 	// Get all objects
+	// Collect all matching file information
+	var results []githookkit.FileInfo
+
+	// branch deletion, return
+	if endCommit == "0000000000000000000000000000000000000000" {
+		return results, nil
+	}
+
 	count, err := githookkit.CountCommits(endCommit, startCommit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get count: %w", err)
@@ -94,8 +102,6 @@ func run(startCommit, endCommit string, sizeChecker func(int64) bool) ([]githook
 		return nil, fmt.Errorf("failed to get object details: %w", err)
 	}
 
-	// Collect all matching file information
-	var results []githookkit.FileInfo
 	for fileInfo := range fileInfoChan {
 		// Ensure object has path and size information
 		if fileInfo.Path != "" {

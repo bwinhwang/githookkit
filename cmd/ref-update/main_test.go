@@ -339,6 +339,22 @@ func TestMainIntegration(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "delete branch",
+			args: []string{
+				"-project", "test-project",
+				"-uploader", "Test User",
+				"-uploader-username", "testuser",
+				"-oldrev", "HEAD",
+				"-newrev", "0000000000000000000000000000000000000000",
+				"-refname", "refs/heads/master",
+			},
+			env: []string{
+				"GITHOOK_FILE_SIZE_MAX=4096", // 4KB
+				fmt.Sprintf("HOME=%s", tempDir),
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
