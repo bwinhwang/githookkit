@@ -62,7 +62,7 @@ func main() {
 			logger.Infof("  Path: %s, Size: %d bytes", file.Path, file.Size)
 
 		}
-		logger.Fatalf("REJECTED: one or more files exceed maximum size of %s, the largest one is %s\n", githookkit.FormatSize(sizeLimit), githookkit.FormatSize(maxFileSize))
+		logger.Fatalf("REJECTED: one or more files exceed maximum size of %s, the largest one is %s, use git lfs!", githookkit.FormatSize(sizeLimit), githookkit.FormatSize(maxFileSize))
 	}
 }
 

@@ -3,7 +3,10 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/sirupsen/logrus"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -275,4 +278,113 @@ func TestInitLogger(t *testing.T) {
 
 		})
 	}
+}
+
+func TestFormat(t *testing.T) {
+	formatter := &ConsoleFormatter{}
+
+	tests := []struct {
+		name          string
+		level         logrus.Level
+		message       string
+		expectedColor string
+	}{
+		{
+			name:          "Error level message",
+			level:         logrus.ErrorLevel,
+			message:       "This is an error",
+			expectedColor: "\033[31m", // Red
+		},
+		{
+			name:          "Warning level message",
+			level:         logrus.WarnLevel,
+			message:       "This is a warning",
+			expectedColor: "\033[33m", // Yellow
+		},
+		{
+			name:          "Info level message",
+			level:         logrus.InfoLevel,
+			message:       "This is info",
+			expectedColor: "", // No color
+		},
+		{
+			name:          "Debug level message",
+			level:         logrus.DebugLevel,
+			message:       "This is debug",
+			expectedColor: "", // No color
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := &logrus.Entry{
+				Logger:  logrus.New(),
+				Level:   tt.level,
+				Message: tt.message,
+				Data:    logrus.Fields{},
+			}
+
+			result, err := formatter.Format(entry)
+			if err != nil {
+				t.Errorf("Format() error = %v", err)
+				return
+			}
+
+			// Check if color is applied correctly
+			if tt.expectedColor != "" {
+				if !contains(string(result), tt.expectedColor) {
+					t.Errorf("Format() result = %q, expected to contain color code %q", result, tt.expectedColor)
+				}
+				// Check for reset code
+				if !contains(string(result), "\033[0m") {
+					t.Errorf("Format() result = %q, expected to contain reset code '\\033[0m'", result)
+				}
+			} else {
+				// No color should be applied
+				if contains(string(result), "\033[") {
+					t.Errorf("Format() result = %q, expected no color codes", result)
+				}
+			}
+
+			// Check if message is included
+			if !contains(string(result), tt.message) {
+				t.Errorf("Format() result = %q, expected to contain message %q", result, tt.message)
+			}
+
+			// Check if newline is included
+			if !contains(string(result), "\n") {
+				t.Errorf("Format() result = %q, expected to contain newline", result)
+			}
+		})
+	}
+
+	// Test with msg in data field
+	t.Run("Message from data field", func(t *testing.T) {
+		customMsg := "Message from data field"
+		entry := &logrus.Entry{
+			Logger:  logrus.New(),
+			Level:   logrus.InfoLevel,
+			Message: "Original message",
+			Data:    logrus.Fields{"msg": customMsg},
+		}
+
+		result, err := formatter.Format(entry)
+		if err != nil {
+			t.Errorf("Format() error = %v", err)
+			return
+		}
+
+		// Should use msg from data field instead of Message
+		if !contains(string(result), customMsg) {
+			t.Errorf("Format() result = %q, expected to contain custom msg %q", result, customMsg)
+		}
+		if contains(string(result), "Original message") {
+			t.Errorf("Format() result = %q, should not contain original message", result)
+		}
+	})
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }

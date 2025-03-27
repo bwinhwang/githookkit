@@ -218,11 +218,20 @@ func (f *ConsoleFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	switch entry.Level {
 	case logrus.ErrorLevel, logrus.FatalLevel, logrus.PanicLevel:
 		colorCode = "\033[31m" // Red
+	case logrus.WarnLevel:
+		colorCode = "\033[33m" // Yellow
 	default:
-		colorCode = "\033[0m" // Reset
+		colorCode = "" // No color
 	}
 
-	// Add color and reset
-	coloredMsg := fmt.Sprintf("%s%s\033[0m\n", colorCode, msg)
-	return []byte(coloredMsg), nil
+	var formattedMsg string
+	if colorCode != "" {
+		// Add color and reset
+		formattedMsg = fmt.Sprintf("%s%s\033[0m\n", colorCode, msg)
+	} else {
+		// No color
+		formattedMsg = fmt.Sprintf("%s\n", msg)
+	}
+
+	return []byte(formattedMsg), nil
 }
