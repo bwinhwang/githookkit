@@ -40,9 +40,8 @@ type CommandParams struct {
 // Logger is a wrapper around logrus.Logger that tracks open file resources
 type Logger struct {
 	*logrus.Logger
-	file   *os.File // The file handle if logging to a file
-	level  string   // Current log level
-	output string   // Current output destination
+	file  *os.File // The file handle if logging to a file
+	level string   // Current log level
 }
 
 // Close properly closes any resources held by the logger
@@ -56,11 +55,6 @@ func (l *Logger) Close() {
 // GetLevel returns the current log level
 func (l *Logger) GetLevel() logrus.Level {
 	return l.Logger.GetLevel()
-}
-
-// GetOutput returns the current output destination
-func (l *Logger) GetOutput() string {
-	return l.output
 }
 
 // LoadConfig loads configuration from the config file
@@ -147,15 +141,11 @@ func InitLogger(config Config) (*Logger, error) {
 	if level == "" {
 		level = "info"
 	}
-	if output == "" {
-		output = "stderr"
-	}
 
 	// Create logger
 	logger := &Logger{
 		Logger: logrus.New(),
 		level:  level,
-		output: output,
 	}
 
 	// Set log level
@@ -175,15 +165,8 @@ func InitLogger(config Config) (*Logger, error) {
 	}
 
 	// Set output target
-	if output == "stdout" || output == "stderr" {
-		var out io.Writer
-		if output == "stdout" {
-			out = os.Stdout
-		} else {
-			out = os.Stderr
-		}
-
-		logger.SetOutput(out)
+	if output == "" {
+		logger.SetOutput(os.Stderr)
 		logger.SetFormatter(&ConsoleFormatter{})
 	} else {
 		fileWriter, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -194,8 +177,8 @@ func InitLogger(config Config) (*Logger, error) {
 		// Store the file handle for later cleanup
 		logger.file = fileWriter
 
-		// Use MultiWriter to output to both file and stdout
-		multiWriter := io.MultiWriter(fileWriter, os.Stdout)
+		// Use MultiWriter to output to both file and stderr
+		multiWriter := io.MultiWriter(fileWriter, os.Stderr)
 		logger.SetOutput(multiWriter)
 		logger.SetFormatter(fileFormatter)
 	}

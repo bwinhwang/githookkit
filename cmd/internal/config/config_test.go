@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -192,90 +193,118 @@ func TestContains(t *testing.T) {
 }
 
 func TestInitLogger(t *testing.T) {
-	oldLevel := os.Getenv("GITHOOK_LOG_LEVEL")
-	oldOutput := os.Getenv("GITHOOK_LOG_OUTPUT")
-	defer func() {
-		os.Setenv("GITHOOK_LOG_LEVEL", oldLevel)
-		os.Setenv("GITHOOK_LOG_OUTPUT", oldOutput)
-	}()
-
-	// Create temp directory for log files
-	tempDir := t.TempDir()
-	validLogPath := filepath.Join(tempDir, "test.log")
-
 	tests := []struct {
-		name           string
-		config         Config
-		envLevel       string
-		envOutput      string
-		expectedLevel  string
-		expectedOutput string
-		expectError    bool
+		name          string
+		logConfig     LogConfig
+		envLevel      string
+		envOutput     string
+		expectedLevel logrus.Level
+		expectFile    bool
 	}{
 		{
-			name: "Use config file",
-			config: Config{
-				LogConfig: LogConfig{
-					Level:  "info",
-					Output: validLogPath,
-				},
-			},
-			expectedLevel:  "info",
-			expectedOutput: validLogPath,
+			name:          "Default config",
+			logConfig:     LogConfig{},
+			expectedLevel: logrus.InfoLevel,
+			expectFile:    false,
 		},
 		{
-			name: "Use environment variables to override",
-			config: Config{
-				LogConfig: LogConfig{
-					Level:  "info",
-					Output: validLogPath,
-				},
-			},
-			envLevel:       "debug",
-			envOutput:      "stdout",
-			expectedLevel:  "debug",
-			expectedOutput: "stdout",
+			name:          "Config with level and output",
+			logConfig:     LogConfig{Level: "debug", Output: "test.log"},
+			expectedLevel: logrus.DebugLevel,
+			expectFile:    true,
 		},
 		{
-			name:           "Use default values",
-			config:         Config{},
-			expectedLevel:  "info",
-			expectedOutput: "stderr",
-		},
-		{
-			name: "Invalid file path",
-			config: Config{
-				LogConfig: LogConfig{
-					// Use a path that should be invalid on both Windows and Linux
-					Output: filepath.Join("?", "<", ">", ":", "*", "|", "test.log"),
-				},
-			},
-			expectError: true,
+			name:          "Environment overrides config",
+			logConfig:     LogConfig{Level: "warn", Output: "config.log"},
+			envLevel:      "info",
+			envOutput:     "env.log",
+			expectedLevel: logrus.InfoLevel,
+			expectFile:    true,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set environment variables for this test
-			if tt.envLevel != "" {
-				os.Setenv("GITHOOK_LOG_LEVEL", tt.envLevel)
-			} else {
-				os.Unsetenv("GITHOOK_LOG_LEVEL")
-			}
-			if tt.envOutput != "" {
-				os.Setenv("GITHOOK_LOG_OUTPUT", tt.envOutput)
-			} else {
-				os.Unsetenv("GITHOOK_LOG_OUTPUT")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Set environment variables
+			if tc.envLevel != "" {
+				os.Setenv("GITHOOK_LOG_LEVEL", tc.envLevel)
+				defer os.Unsetenv("GITHOOK_LOG_LEVEL")
 			}
 
-			// Run the test
-			logger, _ := InitLogger(tt.config)
+			// Track the actual output path we'll use
+			var actualOutputPath string
 
-			// Ensure logger is properly closed when test finishes
-			if logger != nil {
-				defer logger.Close()
+			// Create a temporary file if needed
+			if tc.expectFile {
+				// Use a temporary path for the log file
+				tempFile, err := os.CreateTemp("", "test_log_*.log")
+				if err != nil {
+					t.Fatalf("Failed to create temp file: %v", err)
+				}
+				tempPath := tempFile.Name()
+				tempFile.Close()
+				os.Remove(tempPath) // Remove it so the logger can create it
+
+				// Save the actual path we'll use for verification
+				actualOutputPath = tempPath
+
+				if tc.envOutput != "" {
+					os.Setenv("GITHOOK_LOG_OUTPUT", tempPath)
+					defer os.Unsetenv("GITHOOK_LOG_OUTPUT")
+				} else {
+					tc.logConfig.Output = tempPath
+				}
+
+				fmt.Printf("Using log file: %s\n", tempPath)
+				//defer os.Remove(tempPath)
 			}
 
+			// Create config with test log config
+			config := Config{
+				LogConfig: tc.logConfig,
+			}
+
+			// Initialize logger
+			logger, err := InitLogger(config)
+			if err != nil {
+				t.Fatalf("Failed to initialize logger: %v", err)
+			}
+			//defer logger.Close()
+
+			// Check level
+			if logger.GetLevel() != tc.expectedLevel {
+				t.Errorf("Expected log level %v, got %v", tc.expectedLevel, logger.GetLevel())
+			}
+
+			// Verify file is created when expected
+			if tc.expectFile {
+				// Log a test message
+				logger.Info("Test message")
+
+				// Flush and close the logger to ensure all data is written
+				logger.Close()
+
+				// Check file exists
+				if _, err := os.Stat(actualOutputPath); os.IsNotExist(err) {
+					t.Errorf("Expected log file %s was not created", actualOutputPath)
+				}
+
+				// Check file contains message
+				content, err := os.ReadFile(actualOutputPath)
+				if err != nil {
+					t.Fatalf("Failed to read log file: %v", err)
+				}
+
+				// Print file content for debugging
+				fmt.Printf("File content: %s\n", string(content))
+
+				// Check for message with more flexibility
+				if len(content) == 0 {
+					t.Errorf("Log file is empty")
+				} else if !strings.Contains(strings.ToLower(string(content)), "test message") {
+					t.Errorf("Log message not found in file")
+				}
+			}
 		})
 	}
 }
